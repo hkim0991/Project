@@ -1,0 +1,388 @@
+---
+title: "0412_adt_01"
+author: "180212_my"
+date: "2018년 4월 12일"
+output: html_document
+---
+```{r}
+## call packages
+library(data.table)
+library(sqldf)
+library(ggplot2)
+library(gridExtra)
+library(caret)
+library(lubridate)  # time 
+```
+
+```{r}
+df <- fread("C:\\Users\\202-22\\Documents\\R\\R2_Project\\R_Studio_exercise\\Project\\Data\\ad_tracking_data\\train_sample.csv", stringsAsFactors = F, na.string=c("", NA)) # na.string=c( ))
+test <- fread("C:\\Users\\202-22\\Documents\\R\\R2_Project\\R_Studio_exercise\\Project\\Data\\ad_tracking_data\\test.csv", stringsAsFactors = F)
+```
+
+```{r}
+head(df)
+head(test)
+```
+
+```{r}
+summary(df)
+```
+
+```{r}
+dim(df) ; dim(test)
+```
+
+```{r}
+colnames(df)
+colnames(test)
+```
+
+## Missing value checking
+```{r}
+colSums(is.na(df)) # 99773 missing value = number of not-downloaded 
+colSums(is.na(test))  ## no missing value in test dataset
+```
+
+## Convert click_time into proper date & time
+```{r}
+# Click time
+cl_ymd <- ymd(as.Date(df$click_time))
+cl_year <- year(cl_ymd)
+cl_month <- month(cl_ymd)
+cl_day <- day(cl_ymd)
+cl_hour <- as.POSIXlt(df$click_time)$hour
+cl_min <- as.POSIXlt(df$click_time)$min
+cl_sec <- as.POSIXlt(df$click_time)$sec
+
+# Attributed tiume
+at_ymd <- ymd(as.Date(df$attributed_time))
+at_year <- year(at_ymd)
+at_month <- month(at_ymd)
+at_day <- day(at_ymd)
+at_hour <- as.POSIXlt(df$attributed_time)$hour
+at_min <- as.POSIXlt(df$attributed_time)$min
+at_sec <- as.POSIXlt(df$attributed_time)$sec
+
+df2 <- cbind(df, cl_year, cl_month, cl_day, cl_hour, cl_min, cl_sec, at_year, at_month, at_day, at_hour, at_min, at_sec)
+head(df2)
+```
+
+## Check the unique number for each of feature
+```{r}
+length(t_ip)     # 34857 (100000-34857)
+length(t_app)    # 161
+length(t_device) # 100
+length(t_os)     # 130
+length(t_chl)    # 161
+
+# OR
+apply(df2, 2, function(x) length(unique(x)))  # 1: row 2: column
+```
+
+## basic plot - clicked_time by day
+```{r}
+barplot(table(df2$cl_day), ylim=c(0,35000), 
+        names=c("2017-11-06", "2017-11-07", "2017-11-08", "2017-11-09"))
+title(main="Clicked_time distribution by day")
+
+## day 7 (tues)> day 8(wed) > day 9 (thus) > day 6 (mon)
+```
+
+## ggplot - clicked_time by day
+```{r}
+ggplot(df2, aes(x=cl_day)) + geom_bar(fill=c("red", "orange", "green", "blue")) 
+```
+
+## basic barplot - Clicked_time by hour
+```{r}
+barplot(table(df2$cl_hour), ylim=c(0,7000))
+title(main="Clicked_time distribution by hour")
+```
+
+```{r}
+barplot(table(df2$cl_min), ylim=c(0,2500))
+title(main="Clicked_time distribution by min")  ## there is nothing special
+```
+
+```{r}
+barplot(table(df2$cl_sec), ylim=c(0,2500))
+title(main="Clicked_time distribution by second")  ## there is nothing special
+```
+
+## ggplot - Clicked_time by hour
+```{r}
+ggplot(df2, aes(x=cl_hour)) + geom_bar() 
+```
+
+## basic barplot - Attributed_time by hour
+```{r}
+barplot(table(df2$at_hour), ylim=c(0,30))
+title(main="Attributed_time distribution by hour")
+```
+
+## basic barplot - Attributed_time by day
+```{r}
+barplot(table(df2$at_day), ylim=c(0,100), 
+        names=c("2017-11-06", "2017-11-07", "2017-11-08", "2017-11-09"))
+title(main="Attributed_time distribution by day")
+```
+
+
+## continuous variables > categorical variables
+```{r}
+c_var <- c(df2$ip, df2$app, df2$device, df2$os, df2$channel)
+is(c_var)
+vapply(c_var, as.factor)
+ip, app, device, os, channel function(x) function(x) length(unique(x)))
+```
+
+## barplot: categorical : 1/ table > 2/ barplot 
+```{r}
+
+
+t_ip <- sort(table(df$ip), decreasing = T)
+t_ip <- t_ip[1:10]
+
+t_app <- sort(table(df$app), decreasing = T)
+t_app <- t_app[1:10]
+
+t_device <-sort(table(df$device), decreasing = T)
+t_device <- t_device[1:10]
+
+t_os <- sort(table(df$os), decreasing = T)
+t_os <- t_os[1:10]
+
+t_chl <- sort(table(df$channel), decreasing = T)
+t_chl <- t_chl[1:10]
+
+barplot(t_ip)   ## there are many duplicated ips
+barplot(t_app)
+barplot(t_device)  # numbered device 1 is the most frequent value
+barplot(t_os)
+barplot(t_chl)
+```
+
+
+## how many of category 1(app has been downloaded) from "is_attributed"  
+```{r}
+df2$is_attributed <- as.factor(df2$is_attributed)
+summary(df)
+sum(is.na(df$is_attributed))  # 0
+t_appdown <- table(df$is_attributed)
+
+b1 <- barplot(t_appdown, col=c("red", "green"),
+          names =c("Not downloaded", "downloaded"),
+          ylim=c(0, 100000)
+          )
+title("App download results")
+title(xlab="App download status")
+title(ylab="The number of app downloading") 
+text(x = b1, y = df$is_attributed, label = t_appdown, pos = 3, cex = 0.8)
+
+## There are more people who didn't download the app
+```
+
+```{r}
+g1 <- ggplot(df2, aes(x=cl_day, fill=is_attributed))
+g2 <- geom_bar(position = "dodge", width=1)
+g1+g2
+
+```
+
+
+```{r}
+g3 <- ggplot(df2, aes(x=cl_hour, fill=is_attributed))
+g4 <- geom_bar(position = "dodge", width=0.5)
+g3 + g4
+```
+
+```{r}
+a <- c(df2$ip, df2$app, df2$device, df2$os, df2$channel)
+plot(c(df2$ip, df2$app, df2$device, df2$os, df2$channel))
+
+plot(df2$ip, df2$device)
+```
+
+```{r}
+df2_device1 <- df2[df2$device == "1", ]
+device1_ip <- sort(table(df2_device1$ip), decreasing = T)
+device1_ip <- device1_ip[1:10]
+barplot(device1_ip)
+
+```
+
+```{r}
+df2_device1 <- df2[df2$device == "1", ]
+device1_ip <- sort(table(df2_device1$ip), decreasing = T)
+device1_ip <- device1_ip[1:10]
+barplot(device1_ip)
+
+df2_device1 <- df2[df2$device == "1", ]
+device1_os <- sort(table(df2_device1$os), decreasing = T)
+device1_os <- device1_os[1:10]
+barplot(device1_os)
+
+df2_device1 <- df2[df2$device == "1", ]
+device1_chl <- sort(table(df2_device1$channel), decreasing = T)
+device1_chl <- device1_chl[1:10]
+barplot(device1_chl)
+
+
+bar_top10 <- funtion(data, variable) {
+  a <- sort(table(data$variable), decreasing = T)
+  a <- a[1:10]
+  barplot(a)
+}
+
+
+```
+
+## number of app downlowd for the most frequent device, #1
+```{r}
+df2_device1 <- df2[df2$device == "1", ]
+device1_attr <- table(df2_device1$is_attributed)
+
+b2 <- barplot(device1_attr, col=c("red", "green"),
+          names =c("Not downloaded", "downloaded"))
+title("App download results by device # 1")
+title(xlab="App download status")
+title(ylab="The number of app downloading by device #1") 
+text(x = b2, y = df2_device1$is_attributed, label = device1_attr, pos = 3, cex = 0.8)
+```
+
+## number of app downlowd for the most frequent os, #19
+```{r}
+df2_os19 <- df2[df2$os == "19", ]
+os19_attr <- table(df2_os19$is_attributed)
+
+b3 <- barplot(os19_attr, col=c("red", "green"),
+          names =c("Not downloaded", "downloaded"))
+title("App download results by os # 19")
+title(xlab="App download status")
+title(ylab="The number of app downloading by os #19") 
+text(x = b3, y = df2_os19$is_attributed, label = os19_attr, pos = 3, cex = 0.8)
+```
+
+```{r}
+df2_chl280 <- df2[df2$channel == "280", ]
+chl280_attr <- table(df2_chl280$is_attributed)
+
+b4 <- barplot(chl280_attr, col=c("red", "green"),
+          names =c("Not downloaded", "downloaded"))
+title("App download results by channel # 280")
+title(xlab="App download status")
+title(ylab="The number of app downloading by channel #280") 
+text(x = b4, y = df2_chl280$is_attributed, label = chl280_attr, pos = 3, cex = 0.8)
+```
+
+## device #1 & os #19 & channel # 280
+```{r}
+df2_doc <- df2[df2$device == "1" & df2$os == "19" & df2$channel == "280", ]
+doc_attr <- table(df2_doc$is_attributed)
+
+b5 <- barplot(doc_attr, col=c("red", "green"),
+          names =c("Not downloaded", "downloaded"))
+title("App download results by device #1 & os #19 & channel # 280")
+title(xlab="App download status")
+title(ylab="The number of app downloading by device #1 & os #19 & channel # 280") 
+text(x = b5, y = df2_doc$is_attributed, label = doc_attr, pos = 3, cex = 0.8)
+```
+
+```{r}
+df2$is_attributed <- as.factor(df2$is_attributed)
+summary(df2)
+ggplot(df2, aes(x=cl_hour, y=cl_day, color=is_attributed)) +geom_point()
+```
+
+```{r}
+g3 <- ggplot(df2$is, aes(x=cl_hour, fill=is_attributed))
+g4 <- geom_bar(position = "dodge", width=0.5)
+g3 + g4
+```
+
+
+```{r}
+p1=ggplot(df2,aes(x=is_attributed, y=app, fill=is_attributed))+
+  geom_boxplot()+
+  ggtitle("Application ID v/s Is_attributed")+
+  xlab("App ID") +
+  labs(fill = "is_attributed")  
+
+p2=ggplot(df2,aes(x=app,fill=is_attributed))+
+  geom_density()+facet_grid(is_attributed~.)+ # 
+  scale_x_continuous(breaks = c(0,50,100,200,300,400))+
+  ggtitle("Application ID v/s Is_attributed")+
+  xlab("App ID") +
+  labs(fill = "is_attributed")  
+
+
+p3=ggplot(df2,aes(x=is_attributed,y=app,fill=is_attributed))+
+  geom_violin()+
+  ggtitle("Application ID v/s Is_attributed")+
+  xlab("App ID") +
+  labs(fill = "is_attributed")  
+
+## par(mfrow=c(2,2))
+grid.arrange(p1, p2, p3, nrow=2,ncol=2)
+```
+
+## devide train set (70/30) while considering target variable which is categorical variable
+```{r}
+indexTrain <- createDataPartition(df2$is_attributed, p = 0.7, list=F)
+ad_train <- df2[indexTrain, ]
+ad_test <- df2[-indexTrain, ]
+head(ad_test)
+```
+
+```{r}
+table(ad_train$is_attributed)
+table(ad_test$is_attributed)
+```
+```{r}
+plot(is_attributed ~ ., data=df2)
+```
+
+```{r}
+
+```
+
+```{r}
+ad_lm <- lm(is_attributed ~ ip + os + device + channel + cl_day + cl_hour, data=ad_train)
+summary(ad_lm)
+```
+
+```{r}
+head(ad_test)
+c("mpg", "cyl", "am")
+
+ad_test2 <- ad_test[, c("ip", "channel", "cl_day", "at_day", "at_hour", "is_attributed")]
+head(ad_test2)
+ad_pr <- predict(ad_lm, newdata=ad_test2)
+head(ad_pr)
+```
+
+```{r}
+
+```
+
+```{r}
+ad_glm <- glm(is_attributed ~ ip + app + device + os + channel + cl_hour + cl_min + cl_day + at_hour + at_min + at_day, data=ad_train)
+summary(ad_glm)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
