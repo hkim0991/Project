@@ -223,7 +223,30 @@ autoplot(forecast(m_aa, h=12)) + theme_minimal()
 ```
 
 ```{r}
+X <- copy(train)[, `:=`(hour = hour(click_time),
+                        wday = wday(click_time),
+                        minute = minute(click_time))
+                 ][, c("click_time", "attributed_time", "is_attributed") := NULL]
 
+head(X)
+y <- train$is_attributed
+```
+
+
+```{r}
+table(tri)
+```
+
+```{r}
+tri <- createDataPartition(y, p = 0.6, list = F)
+
+X_val <- X[-tri] # valid data
+y_val <- y[-tri]
+
+X <- X[tri]
+
+X$y <- factor(ifelse(train$is_attributed[tri]==0, "zero", "one"))  # create a new variable
+str(X)
 ```
 
 ```{r}
