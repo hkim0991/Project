@@ -6,6 +6,7 @@ output: html_document
 # Load libraries
 ```{r}
 # install.packages(c('data.table', 'DT', 'magrittr', 'corrplot', 'Rmisc', 'ggalluvial', 'caret', 'ModelMetrics', 'scales', 'irlba', 'forcats', 'forecast', 'TSA', 'zoo'))
+install.packages('xgboost')
 library(data.table)
 library(ggplot2)
 library(DT)
@@ -21,17 +22,18 @@ library(forcats)
 library(forecast)
 library(TSA)
 library(zoo)
+library(xgboost)
 ```
 
 ## 02. Load data
 ```{r}
 # ktm
-train <- fread("C:/Users/202-22/Documents/R/R2_Project/R_Studio_exercise/data/Ad_tracking/train_sample.csv", showProgress=F)
-test <- fread("C:/Users/202-22/Documents/R/R2_Project/R_Studio_exercise/data/Ad_tracking/test.csv", showProgress=F)
+#train <- fread("C:/Users/202-22/Documents/R/R2_Project/R_Studio_exercise/data/Ad_tracking/train_sample.csv", showProgress=F)
+#test <- fread("C:/Users/202-22/Documents/R/R2_Project/R_Studio_exercise/data/Ad_tracking/test.csv", showProgress=F)
 
 # home
-# train <- fread('C:\\Users\\Kim\\Documents\\R\\Home_Review\\R_review\\ad_tracking\\train_sample.csv', showProgress = F)
-# test <- fread('C:\\Users\\Kim\\Documents\\R\\Home_Review\\R_review\\ad_tracking\\test.csv', showProgress = F)
+train <- fread('C:\\Users\\Kim\\Documents\\R\\Home_Review\\R_review\\ad_tracking\\train_sample.csv', showProgress = F)
+test <- fread('C:\\Users\\Kim\\Documents\\R\\Home_Review\\R_review\\ad_tracking\\test.csv', showProgress = F)
 ```
 
 ## 03. Glimpse at the dataset
@@ -125,6 +127,7 @@ m <- model.matrix(~.-1, X) %>% cor(method = "spearman")
 m[is.na(m)] <- 0 
 corrplot(m, type="full", method = "color", tl.pos = "n", cl.pos = "n", diag = T)
 ```
+
 ```{r}
 diag(m)
 ```
@@ -238,19 +241,40 @@ table(tri)
 ```
 
 ```{r}
-tri <- createDataPartition(y, p = 0.6, list = F)
+tri <- createDataPartition(y, p = 0.6, list = F)  # show the selected index
 
 X_val <- X[-tri] # valid data
 y_val <- y[-tri]
 
 X <- X[tri]
 
-X$y <- factor(ifelse(train$is_attributed[tri]==0, "zero", "one"))  # create a new variable
+# create a new variable y in X
+X$y <- factor(ifelse(train$is_attributed[tri]==0, "zero", "one")) 
 str(X)
 ```
 
 ```{r}
+ctrl <- trainControl(method = "cv", 
+                     number = 4,
+                     classProbs = T,
+                     summaryFunction = twoClassSummary)
 
+grid <- expand.grid(nrounds = 95, 
+                    max_depth = 7, 
+                    eta = 0.2, 
+                    gamma = 0,
+                    min_child_weight = 5,
+                    colsample_bytree = 0.7, 
+                    subsample = 0.7)
+
+set.seed(0)
+m_xgb <- train(y ~ ., data = X,
+               method = "xgbTree",
+               nthread = 8,
+               metric = "ROC",
+               tuneGrid = grid,
+               trControl = ctrl)
+getTrainPerf(m_xgb)
 ```
 
 ```{r}
