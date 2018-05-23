@@ -1,0 +1,295 @@
+---
+title: "0412_adt_01"
+author: "180212_my"
+date: "2018??? 4??? 12???"
+output: html_document
+---
+
+## load libraries
+```{r}
+install.packages(c('data.table', 'DT', 'magrittr', 'corrplot', 'Rmisc', 'ggalluvial', 'caret', 'ModelMetrics', 'scales', 'irlba', 'forcats', 'forecast', 'TSA', 'zoo', 'gridExtra', 'sqldf', 'xgboost'))
+
+## load packages
+library(data.table)
+library(sqldf)
+library(ggplot2)
+library(gridExtra)
+library(caret)
+library(dplyr)
+library(lubridate)  # time 
+library(xgboost)
+
+#remove.packages("plotROC")
+#install.packages('plotROC', dep = TRUE)
+```
+
+## set the data path
+```{r}
+# getwd()
+train_path <- "../data/ad.tracking/train_10m.csv"
+train_sample_path <- "../data/ad.tracking/train_sample.csv"
+test_path  <- "../data/ad.tracking/test.csv"
+```
+
+## load dataset
+```{r}
+train <- fread(train_path, showProgress = F, stringsAsFactors = F, na.string=c("", NA))
+df <- fread(train_sample_path, showProgress = F, stringsAsFactors = F, na.string=c("", NA))
+test <- fread(test_path, showProgress = F, stringsAsFactors = F)
+
+set.seed(0)
+train <- train[sample(.N, 1e6), ]
+```
+
+```{r}
+head(train)
+head(test)
+```
+
+```{r}
+str(train)
+str(test)
+```
+
+```{r}
+summary(train)
+```
+
+```{r}
+dim(train) ; dim(test)
+```
+
+```{r}
+colnames(train)
+colnames(test)
+```
+
+## Missing value checking
+```{r}
+colSums(is.na(train)) # 997495 missing value = number of not-downloaded 
+colSums(is.na(test))  ## no missing value in test dataset
+```
+
+## Convert click_time into proper date & time format
+```{r}
+# Click time
+cl_ymd <- ymd(as.Date(train$click_time))
+cl_year <- year(cl_ymd)
+cl_month <- month(cl_ymd)
+cl_day <- day(cl_ymd)
+cl_hour <- as.POSIXlt(train$click_time)$hour
+cl_min <- as.POSIXlt(train$click_time)$min
+cl_sec <- as.POSIXlt(train$click_time)$sec
+
+# Attributed time
+at_ymd <- ymd(as.Date(train$attributed_time))
+at_year <- year(at_ymd)
+at_month <- month(at_ymd)
+at_day <- day(at_ymd)
+at_hour <- as.POSIXlt(train$attributed_time)$hour
+at_min <- as.POSIXlt(train$attributed_time)$min
+at_sec <- as.POSIXlt(train$attributed_time)$sec
+
+tr2 <- cbind(train, cl_year, cl_month, cl_day, cl_hour, cl_min, cl_sec, at_year, at_month, at_day, at_hour, at_min, at_sec)
+# df2 <- cbind(df, cl_year, cl_month, cl_day, cl_hour, cl_min, cl_sec)
+tr2 <- tr2 %>% select(-c(click_time, attributed_time, cl_year, cl_month, at_year, at_month))
+head(tr2)
+
+```
+
+## Check the unique number for each of feature
+```{r}
+length(t_ip)     # 34857 (100000-34857)
+length(t_app)    # 161
+length(t_device) # 100
+length(t_os)     # 130
+length(t_chl)    # 161
+
+# OR
+unique <- as.data.frame(apply(tr2[,1:7], 2, function(x) length(unique(x)))) # 1: row 2: column
+```
+
+
+## Unique values by each features
+```{r}
+unique <- as.data.frame(apply(tr2[,1:7], 2, function(x) length(unique(x))))
+unicount <- transpose(unique)
+colnames(unicount) <- c('ip', 'app', 'device', 'os', 'channel', 'click_time', 'attributed_time')  
+  
+unicount %>%
+  melt(variable.name = "features", value.name = "unique_values") %>%
+  ggplot(aes(reorder(features, -unique_values), unique_values)) +
+  geom_bar(stat ="identity", fill="steelblue") + 
+  scale_y_log10(breaks = c(150,300, 500, 1000, 50000, 100000)) +
+  geom_text(aes(label = unique_values), vjust = 1.6, color = "white", size=3.5) +
+  theme_minimal() +
+  labs(x = "features", y = "Number of unique values")
+```
+
+
+## Top 10 OS by ¡®is_attributed¡¯
+```{r}
+os1 <- tr2[tr2$is_attributed == "0", ][, .N, by = os][order(-N)][1:10] %>%
+  ggplot(aes(reorder(os, -N), N)) +
+  geom_bar(stat='identity', fill="steelblue") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=1.5, color="white", size=3) +
+  ggtitle("Top 10 OS by number of no downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("os") +
+  ylab("numbers of no downloads")
+
+os2 <- tr2[tr2$is_attributed == "1", ][, .N, by = os][order(-N)][1:10] %>%
+  ggplot(aes(reorder(os, -N), N)) +
+  geom_bar(stat='identity', fill="pink2") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=1.5, color="white", size=3) +
+  ggtitle("Top 10 OS by number of downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("os") +
+  ylab("numbers of downloads")
+
+ggarrange(os1, os2, nrow=2)
+```
+
+
+## Top 10 App by ¡®is_attributed¡¯
+```{r}
+app1 <- tr2[tr2$is_attributed == "0", ][, .N, by = app][order(-N)][1:10] %>%
+  ggplot(aes(reorder(app, -N), N)) +
+  geom_bar(stat='identity', fill="steelblue") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=.5, color="black", size=3) +
+  ggtitle("Top 10 App by number of no downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("app") +
+  ylab("numbers of no downloads")
+
+app2 <- tr2[tr2$is_attributed == "1", ][, .N, by = app][order(-N)][1:10] %>%
+  ggplot(aes(reorder(app, -N), N)) +
+  geom_bar(stat='identity', fill="pink2") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=.5, color="black", size=3) +
+  ggtitle("Top 10 App by number of downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("app") +
+  ylab("numbers of downloads")
+
+ggarrange(app1, app2, nrow=2)
+```
+
+
+## Top 10 Device by ¡®is_attributed¡¯
+```{r}
+dv1 <- tr2[tr2$is_attributed == "0", ][, .N, by = device][order(-N)][1:10] %>%
+  ggplot(aes(reorder(device, -N), N)) +
+  geom_bar(stat='identity', fill="steelblue") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=+.1, color="black", size=3) +
+  ggtitle("Top 10 Device by number of no downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("device") +
+  ylab("numbers of no downloads")
+
+dv2 <- tr2[tr2$is_attributed == "1", ][, .N, by = device][order(-N)][1:10] %>%
+  ggplot(aes(reorder(device, -N), N)) +
+  geom_bar(stat='identity', fill="pink2") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=+.1, color="black", size=3) +
+  ggtitle("Top 10 Device by number of downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("device") +
+  ylab("numbers of downloads")
+
+ggarrange(dv1, dv2, nrow=2)
+```
+
+
+## Top 10 Channel by ¡®is_attributed¡¯
+```{r}
+chl1 <- tr2[tr2$is_attributed == "0", ][, .N, by = channel][order(-N)][1:10] %>%
+  ggplot(aes(reorder(channel, -N), N)) +
+  geom_bar(stat='identity', fill="steelblue") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=+.5, color="black", size=3) +
+  ggtitle("Top 10 Channel by number of no downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("channel") +
+  ylab("numbers of no downloads")
+
+chl2 <- tr2[tr2$is_attributed == "1", ][, .N, by = channel][order(-N)][1:10] %>%
+  ggplot(aes(reorder(channel, -N), N)) +
+  geom_bar(stat='identity', fill="pink2") +
+  theme_minimal() +
+  geom_text(aes(label=N), vjust=+.5, color="black", size=3) +
+  ggtitle("Top 10 Channel by number of downloads") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  xlab("channel") +
+  ylab("numbers of downloads")
+
+ggarrange(chl1, chl2, nrow=2)
+```
+
+
+## ggplot - click_time VS attributed_time by hour
+```{r}
+
+#install.packages("ggpubr")
+library(ggpubr)
+
+p1 <- ggplot(tr2, aes(x=cl_hour)) + 
+  geom_bar(fill="steelblue") +
+  ggtitle("Number of clicks per hour") +
+  xlab("Hour") +
+  ylab("Number of clicks") +
+  theme_minimal()
+
+p2 <- ggplot(tr2, aes(x=at_hour)) + 
+  geom_bar(fill="pink2") +
+  ggtitle("Number of downloads per hour") +
+  xlab("Hour") +
+  ylab("Number of downloads") +
+  theme_minimal()
+
+ggarrange(p1, p2)
+```
+
+## ggplot - click_time VS attributed_time by day
+```{r}
+p3 <- ggplot(tr2, aes(x=cl_day)) + 
+  geom_bar(fill="steelblue") +
+  ggtitle("Number of clicks per day") +
+  xlab("Day") +
+  ylab("Number of clicks") +
+  theme_minimal()
+
+p4 <- ggplot(tr2, aes(x=at_day)) + 
+  geom_bar(fill="pink2") +
+  ggtitle("Number of downloads per day") +
+  xlab("Day") +
+  ylab("Number of downloads") +
+  theme_minimal()
+
+ggarrange(p3, p4)
+```
+
+## converting > categorical variables
+```{r}
+names <- c('ip', 'app', 'device', 'os', 'channel', 'is_attributed', 'cl_day', 'cl_hour')
+tr3 <- tr2
+setDF(tr2) # convert to data.frame
+
+tr3[names] <- lapply(tr3[names], as.factor)
+str(tr3)
+```
+
+## Correlation between features
+```{r}
+options(repr.plot.width=6, repr.plot.height=6)
+install.packages('ggcorrplot')
+library(ggcorrplot)
+tr2$is_attributed <- as.integer(tr2$is_attributed)
+train_cor <- round(cor(tr2[,c(1:8)]), 1)
+
+ggcorrplot(train_cor,  title = "Correlation")+theme(plot.title = element_text(hjust = 0.5))
+```
