@@ -54,8 +54,8 @@ df_X_scaled.head()
 
 from sklearn.cluster import KMeans
 
-# n_clusters = 3
-kmeans = KMeans(n_clusters=3, random_state=0).fit(X_scaled)
+# n_clusters = 4
+kmeans = KMeans(n_clusters=4, random_state=0).fit(X_scaled)
 labels = kmeans.labels_
 clust_labels = kmeans.predict(X_scaled) 
 cent = kmeans.cluster_centers_
@@ -92,7 +92,7 @@ import csv
 clust_data.describe()
 clust_data.info()
 
-clust_data.to_csv('telco_clust_kmeans_n3.csv', index=False)
+clust_data.to_csv('telco_clust_kmeans_n4.csv', index=False)
 
 # Analize the clusters
 clust_data.groupby(['cluster_group']).mean()
@@ -132,6 +132,7 @@ dendrogram(linkage_array)
 agg = AgglomerativeClustering(n_clusters=4).fit_predict(X_scaled)
 
 agg_clust = original.copy()
+agg_clust.drop('Churn', 1, inplace=True) 
 agg_clust['cluster_group'] = agg
 
 # Analize the clusters
@@ -199,7 +200,7 @@ plt.show()
 # https://stackoverflow.com/questions/43160240/how-to-plot-a-k-distance-graph-in-python
 
 
-# the final values of eps and min_samples
+# the final values of eps and min_samples -------------------------------------
 # 1. to find out the best eps value:
 
 for e in np.arange(4.5, 5.6, 0.1):
@@ -215,24 +216,28 @@ for m in range(10, 100):
         print('the number of cluster: {}'.format(collections.Counter(dbscan), '\n'))
 
 
-# Analize the clusters --------------------------------------------------------
+# Compare the clusters --------------------------------------------------------
 # 1. when eps:4.8, MinPt:16
 # the number of cluster: Counter({1: 6063, -1: 478, 0: 407, 2: 95})
 # % of noise: 478/7043: 6.7%
 dbscan1 = DBSCAN(eps=4.8, min_samples=16).fit_predict(X_scaled)            
-dbscan_clust1 = original.copy()
-dbscan_clust1['cluster_group'] = dbscan1
 
+dbscan_clust1 = original.copy()
+dbscan_clust1.drop('Churn', 1, inplace=True) 
+
+dbscan_clust1['cluster_group'] = dbscan1
 dbscan_clust1.groupby(['cluster_group']).mean()
 
 
 # 2. when eps:4.8, MinPt:3
 # the number of cluster: Counter({1: 6310, 0: 660, -1: 69, 2: 4})
-# noise: 0.97%
+# noise: 1% but MinPt=3 doesn't reflect the reality... 
 dbscan2 = DBSCAN(eps=4.8, min_samples=3).fit_predict(X_scaled)
-dbscan_clust2 = original.copy()
-dbscan_clust2['cluster_group'] = dbscan2
 
+dbscan_clust2 = original.copy()
+dbscan_clust2.drop('Churn', 1, inplace=True) 
+
+dbscan_clust2['cluster_group'] = dbscan2
 dbscan_clust2.groupby(['cluster_group']).mean()
 
 
@@ -240,18 +245,35 @@ dbscan_clust2.groupby(['cluster_group']).mean()
 #the number of cluster: Counter({0: 4360, -1: 2119, 1: 480, 2: 84})
 # noise: 30% 
 dbscan3 = DBSCAN(eps=4.8, min_samples=83).fit_predict(X_scaled)
-dbscan_clust3 = original.copy()
-dbscan_clust3['cluster_group'] = dbscan3
 
+dbscan_clust3 = original.copy()
+dbscan_clust3.drop('Churn', 1, inplace=True) 
+
+dbscan_clust3['cluster_group'] = dbscan3
 dbscan_clust3.groupby(['cluster_group']).mean()
 
 
-## comparing means between three different algorithms, #3 seems the one we want
-dbscan_clust3.to_csv('telco_clust_dbscan_n4.csv', index=False)
+# 4. when eps:4.8, MinPt: 81
+#the number of cluster: Counter({0: 4381, -1: 2061, 1: 488, 2: 113})
+# noise: 29% 
+dbscan4 = DBSCAN(eps=4.8, min_samples=81).fit_predict(X_scaled)
+
+dbscan_clust4 = original.copy()
+dbscan_clust4.drop('Churn', 1, inplace=True) 
+
+dbscan_clust4['cluster_group'] = dbscan4
+dbscan_clust4.groupby(['cluster_group']).mean()
+
+
+## comparing means between four different results, 
+## #4 seems the one that we want (more distinct 4 groups and less noise points vs dbscan model 3)
+
+# Write a csv file for the process in Hive
+dbscan_clust4.to_csv('telco_clust_dbscan_n4.csv', index=False)
 
 
 # Comparison between three clustering models ----------------------------------
-# 1. mean values of 'TotalCharges' from each model
+# Spread of mean values of 'TotalCharges' from each clustering model
 
 # k-means(n=4)
 kmeans_n4_mean = clust_data.groupby(['cluster_group']).mean().sort_values('TotalCharges')
@@ -260,9 +282,11 @@ kmeans_n4_mean = clust_data.groupby(['cluster_group']).mean().sort_values('Total
 agg_n4_mean = agg_clust.groupby(['cluster_group']).mean().sort_values('TotalCharges')
 
 # dbscan(n=4)
-dbscan_n4_mean = dbscan_clust3.groupby(['cluster_group']).mean().sort_values('TotalCharges')
+dbscan_n4_mean = dbscan_clust4.groupby(['cluster_group']).mean().sort_values('TotalCharges')
 
-plt.figure(figsize=(15, 9)).subplots_adjust(wspace=0.4)
+
+# Visualization the mean values of 'TotalCharges' from each clustering model
+plt.figure(figsize=(15, 7)).subplots_adjust(wspace=0.3)
 plt.subplot(1,3,1)
 kmeans_n4_mean['TotalCharges'].plot.bar()
 plt.title('kmeans')
@@ -275,5 +299,4 @@ plt.subplot(1,3,3)
 dbscan_n4_mean['TotalCharges'].plot.bar()
 plt.title('DBSCAN')
 plt.show()
-
 
